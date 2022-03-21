@@ -1,0 +1,18 @@
+Amount of devices: 2
+You chose this device: [Intel(R) Iris(TM) Graphics 5100]
+Your OpenCL version: OpenCL 1.2 
+You chose image size: 512x512
+You chose this amount of pics: 3
+GPU mem space: 1629 MB
+Initializing FFT library...
+Reading and FFT-ing input pics...
+Time for initiating buffer(helpers) for pics: 0.821000
+Init buffer for h_original_size and h_extended_size
+Making FFT for h_original_size
+Making FFT for h_original_size
+Making FFT for h_original_size
+
+Time for generating h: 0.806000
+Time for h fft: 0.260000
+Total time for generating and fft'ing h: 1.066000
+

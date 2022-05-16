@@ -49,7 +49,7 @@ void Image::writeToPngFile (const char* file_name)
 
 void Image::allocateRow(int row_index, std::size_t amount_of_bytes) 
 {
-	m_row_pointers[row_index] = new char[amount_of_bytes];
+	m_row_pointers[row_index] = new unsigned char[amount_of_bytes];
 }
 
 Image& Image::operator = (Image&& rhv) noexcept
@@ -65,7 +65,7 @@ Image& Image::operator = (Image&& rhv) noexcept
 
 void Image::destroy()
 {
-	for (char* one_row : m_row_pointers)
+	for (unsigned char* one_row : m_row_pointers)
 		delete[] one_row;
 	m_row_pointers.clear();
 	m_width = 0;

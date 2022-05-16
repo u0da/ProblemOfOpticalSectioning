@@ -1,4 +1,0 @@
-IDate                 Itime(multiply+add)  Ifull time of program   ISize            IAmount of pics  IDevice         
-
-IDate                 Itime(multiply+add)  Ifull time of program   ISize            IAmount of pics  IDevice         
-

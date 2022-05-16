@@ -18,7 +18,7 @@ public:
 
 	inline int getWidth() const;
 	inline int getHeight() const;
-	inline const std::vector<char*>& getRowPointers() const;
+	inline const std::vector<unsigned char*>& getRowPointers() const;
 	
 
 	static Image readFromPngFile(const char* file_name);
@@ -31,7 +31,7 @@ private:
 private:
 	int m_width = 0;
 	int m_height = 0;
-	std::vector<char*> m_row_pointers;
+	std::vector<unsigned char*> m_row_pointers;
 };
 
 Image::Image(int width, int height) :m_width(width), m_height(height)
@@ -60,7 +60,7 @@ int Image::getHeight() const
 	return m_height;
 }
 
-const std::vector<char*>& Image::getRowPointers() const
+const std::vector<unsigned char*>& Image::getRowPointers() const
 {
 	return m_row_pointers;
 }

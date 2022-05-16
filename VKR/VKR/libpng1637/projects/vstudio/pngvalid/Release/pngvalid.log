@@ -1,4 +1,0 @@
-﻿  pngvalid.c
-C:\Users\u0da-win\Documents\VKR\VKR\libpng1637\contrib\libtests\pngvalid.c(53,12): error C2220: the following warning is treated as an error
-C:\Users\u0da-win\Documents\VKR\VKR\libpng1637\contrib\libtests\pngvalid.c(53,12): warning C4464: relative include path contains '..'
-C:\Users\u0da-win\Documents\VKR\VKR\libpng1637\contrib\libtests\pngvalid.c(160,12): warning C4464: relative include path contains '..'

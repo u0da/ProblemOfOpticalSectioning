@@ -40,6 +40,8 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Exe\rash_kernel.cl" />
+    <None Include="Exe\rash_kernel.cl">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>

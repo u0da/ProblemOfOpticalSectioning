@@ -14,6 +14,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <numbers>
+#include <sstream>
+#include <algorithm>
+#include <numeric>
 
 #define MAX_SOURCE_SIZE (0x100000)
 FILE* last_run_log_file = nullptr;
@@ -84,33 +87,26 @@ Cl_Buffer_pair read_and_fft_pics(cl_context ctx, cl_command_queue queue, int amo
 		printf("### filename: %s\n", filename);
 
 		Image image = Image::readFromPngFile(filename);
+		
 
 		if (image.getRowPointers().empty() || image.getWidth() * 2 != fft_rash_size.getSizeX() || image.getHeight() * 2 != fft_rash_size.getSizeY())
 			return Cl_Buffer_pair();
 
 		for (int l = 0; l < image.getHeight(); l++)
 		{
+			const unsigned char* p_row = image.getRowPointers()[l];
 			for (int p = 0; p < image.getWidth(); p++)
-				Array[l * fft_rash_size.getSizeY() + p] = image.getRowPointers()[l][p];
+				Array[l * image.getWidth() * 2 + p] = p_row[p];
 		}
 
-		cl_event write_future = 0;
-		err = clEnqueueWriteBuffer(queue, all_pics_buffer.getBuffers()[0], CL_FALSE, pic_size_in_bytes * i,
-			pic_size_in_bytes, Array.data(), 0, nullptr, &write_future);
+		err = clEnqueueWriteBuffer(queue, all_pics_buffer.getBuffers()[0], CL_TRUE, pic_size_in_bytes * i,
+			pic_size_in_bytes, Array.data(), 0, nullptr,nullptr);
 
 
 		image = {};
 		if (err != CL_SUCCESS)
 		{
 			printf("Error with pics[%d].buffers[0] clEnqueueWriteBuffer\n", i);
-			clReleaseEvent(write_future);
-			return Cl_Buffer_pair();
-		}
-		err = clWaitForEvents(1, &write_future);
-		cl_int err1 = clReleaseEvent(write_future);
-		if (err != CL_SUCCESS || err1 != CL_SUCCESS)
-		{
-			printf("ERROR with events\n");
 			return Cl_Buffer_pair();
 		}
 
@@ -120,7 +116,7 @@ Cl_Buffer_pair read_and_fft_pics(cl_context ctx, cl_command_queue queue, int amo
 		printf("\n");
 	}
 
-	/// Прямое ПФ для КАРТИНК
+	/// Прямое ПФ для КАРТИНОК
 
 	clock_t fft_start = clock();
 	if (FFT_2D_OpenCL(&all_pics_buffer, CLFFT_FORWARD, queue, CL_TRUE, &fft_rash_size) == 0)
@@ -139,7 +135,7 @@ Cl_Buffer_pair read_and_fft_pics(cl_context ctx, cl_command_queue queue, int amo
 	return all_pics_buffer;
 }
 
-cl_program init_kernel_program(cl_context ctx, cl_device_id device)
+cl_program init_kernel_program(cl_context ctx, cl_device_id device, int amount_of_pics, float mu, int iters)
 {
 	// Execute the OpenCL kernel on the list
 	cl_int ret;
@@ -161,7 +157,15 @@ cl_program init_kernel_program(cl_context ctx, cl_device_id device)
 	cl_program program = clCreateProgramWithSource(ctx, 1, &tmp_str, nullptr, &ret);
 
 	// Build the program
-	ret = clBuildProgram(program, 1, &device, nullptr, nullptr, nullptr);
+	std::ostringstream str;
+	str << "-DITERS=" << iters;
+	str << " -DMU=" << std::fixed << mu << "f";
+	str << " -DAMOUNT_OF_PICS=" << amount_of_pics;
+
+	str << " -w -Werror";
+
+
+	ret = clBuildProgram(program, 1, &device, str.str().data(), nullptr, nullptr);
 
 	/// в случае ошибок выводим log
 	if (ret != CL_SUCCESS)
@@ -179,19 +183,19 @@ cl_program init_kernel_program(cl_context ctx, cl_device_id device)
 	return program;
 }
 
+template<typename T>
+void setKernelArg (const cl_kernel kernel, const int arg_index, const T &arg_value, const char *p_arg_name)
+{
+	const cl_int result = clSetKernelArg(kernel, arg_index, sizeof(arg_value), &arg_value);
+	if (result != CL_SUCCESS)
+	{
+		char kernel_name[128] = {};
+		clGetKernelInfo(kernel, CL_KERNEL_FUNCTION_NAME, std::size(kernel_name), kernel_name, nullptr);
 
+		printf("Problems w/ setting arg '%s' to kernel '%s'\n", p_arg_name, kernel_name);
+	}
+}
 
-//// СКОЛЬКО ПАМЯТИ ТРАТИТСЯ ////
-// x^2 - размер одой картинки в пикселях ( оригинальный )
-// тк мы работаем с раширенными матрицами => (2x)^2 - размер одной картинки в пикселях ( расширенный )
-// переводим в байты => (2x)^2 * sizeof(float) - размер одной картинки в байтах ( расширенный )
-// а тк у нас есть и мнимая часть => (2x)^2 * sizeof(float) * 2 - размер Фурье-образа одной картики в байтах ( расширенный )
-// тк у нас h_rash_CL тоже имеет размер (2x)^2 * sizeof(float) * 2 => (2x)^2 * sizeof(float) * 2 * 2 - минимальный необходимый объем памяти на GPU
-// также нужно место для части результата ( матрица и тут должна быть расширена ) => (2x)^2 * sizeof(float) * 2 (result_part_CL)
-// нужно (2x)^2 * sizeof(float) - для итогового результата ( сумма получивших картинок ) (result_CL)
-
-// тогда минимальный объем памяти для N картинок на GPU - (2x)^2 * sizeof(float) * 2 * (2*N + 1) + x^2* sizeof(float)*2  + (2x)^2 * sizeof(float) ( предпоследнее слагаемое - h оригинального размера, последнее - результат )
-// x^2 * sizeof(float) * (16N + 14)
 
 int main(void)
 {
@@ -215,7 +219,7 @@ int main(void)
 	printf("### List of devices:\n");
 
 	char name[128] = { '\0' };
-	std::vector<cl_device_id> devices (number_of_devices);
+	std::vector<cl_device_id> devices(number_of_devices);
 	err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_CPU, number_of_devices, devices.data(), nullptr);
 	for (int i = 0; i < number_of_devices; i++)
 	{
@@ -265,6 +269,16 @@ int main(void)
 		printf("\n");
 	}
 
+	float mu = 0;
+	printf("Choose MU: ");
+	scanf("%f", &mu);
+	printf("\n");
+
+	int iters = 0;
+	printf("Choose iters: ");
+	scanf("%d", &iters);
+	printf("\n");
+
 	clock_t time_start_program = clock();
 
 	char buff[100];
@@ -287,7 +301,7 @@ int main(void)
 
 	show_status_string("GPU mem space: %llu MB", device_memsize_in_bytes / ((cl_ulong)1024 * (cl_ulong)1024));
 
-	cl_ulong min_memsize_in_bytes_required = (cl_ulong)(extent * extent) * sizeof(float) * (32 * amount_of_pics + 22);
+	cl_ulong min_memsize_in_bytes_required = (cl_ulong)(extent * extent) * sizeof(float) * (36 * amount_of_pics + 4* amount_of_pics* amount_of_pics + 7);
 	if (min_memsize_in_bytes_required >= device_memsize_in_bytes)
 	{
 		printf("### Not enough GPU memory\n");
@@ -314,7 +328,9 @@ int main(void)
 	// исходный размер картинки ( используется только для h )
 	size_t dim_of_picture = extent * extent;
 
-	cl_program program = init_kernel_program(ctx, device);
+
+
+	cl_program program = init_kernel_program(ctx, device, amount_of_pics, mu, iters);
 	if (program == 0)
 	{
 		clfftTeardown(); // Release clFFT library
@@ -332,6 +348,7 @@ int main(void)
 	show_status_string("Reading and FFT-ing input pics...");
 	clock_t start = clock();
 	all_pics_buffer = read_and_fft_pics(ctx, queue, amount_of_pics, rash_extent);
+
 	printf("### Reading and fft'ing pics ends in: %f seconds\n", (float)(clock() - start) / CLOCKS_PER_SEC);
 	if (all_pics_buffer.getBuffers()[0] == 0)
 	{
@@ -348,23 +365,22 @@ int main(void)
 
 	/// НАЧАЛО РАБОТЫ С h
 
-	clock_t start_h_CL_time = clock();
-	FFT_OpenCL_data fft_orig_size;
-	err = fft_orig_size.Init(extent, extent, ctx, queue, 1, CLFFT_FORWARD);
-
 	// кол-во картинок равно 3 => amount_of_pics = 3;
 	int amount_of_h = amount_of_pics;
 
-	/// Создаем пару буферов для h размером исходной картинки и h расширенной
-	std::vector<Cl_Buffer_pair> h_rash_CL(amount_of_h);
+	clock_t start_h_CL_time = clock();
+	FFT_OpenCL_data fft_orig_size;
+	err = fft_orig_size.Init(extent, extent, ctx, queue, 1, CLFFT_BACKWARD);
+
+	// Создаем пару буферов для h размером исходной картинки и h расширенной
+	Cl_Buffer_pair all_h_rash_CL_buffer;
+
 	Cl_Buffer_pair h_CL_k;
 
 	show_status_string("Init buffer for h_original_size and h_extended_size");
 
-	for (Cl_Buffer_pair& h_rash_CL_i: h_rash_CL)
-	{
-		h_rash_CL_i.Init(ctx, queue, CL_MEM_READ_WRITE, rash_dim_of_picture);
-	}
+	all_h_rash_CL_buffer.Init(ctx, queue, CL_MEM_READ_WRITE, rash_dim_of_picture * amount_of_h);
+
 	h_CL_k.Init(ctx, queue, CL_MEM_READ_WRITE, dim_of_picture);
 
 	// Создаем kernel для инициализации h и передаем туда аргументы ( delta_z и два буфера для вещественной и мнимой части )
@@ -374,31 +390,18 @@ int main(void)
 	cl_kernel fft_shift_col_kernel = clCreateKernel(program, "fft_shift_col_kernel", &ret);
 
 
-	ret = clSetKernelArg(h_init_kernel, 1, sizeof(cl_mem), &h_CL_k.getBuffers()[0]);
-	if (ret != CL_SUCCESS)
-		printf("Problems w/ setting KernelArgs for h[0] h_init_kernel\n");
-	ret = clSetKernelArg(h_init_kernel, 2, sizeof(cl_mem), &h_CL_k.getBuffers()[1]);
-	if (ret != CL_SUCCESS)
-		printf("Problems w/ setting KernelArgs for h[1] h_init_kernel\n");
+	setKernelArg(h_init_kernel, 1, h_CL_k.getBuffers()[0], "h[0]");
+	setKernelArg(h_init_kernel, 2, h_CL_k.getBuffers()[1], "h[1]");
 
-
-	ret = clSetKernelArg(h_squared_abs_kernel, 0, sizeof(cl_mem), &h_CL_k.getBuffers()[0]);
-	if (ret != CL_SUCCESS)
-		printf("Problems w/ setting KernelArgs for h[0] h_squared_abs_kernel\n");
-	ret = clSetKernelArg(h_squared_abs_kernel, 1, sizeof(cl_mem), &h_CL_k.getBuffers()[1]);
-	if (ret != CL_SUCCESS)
-		printf("Problems w/ setting KernelArgs for h[1] h_squared_abs_kernel\n");
+	setKernelArg(h_squared_abs_kernel, 0, h_CL_k.getBuffers()[0], "h[0]");
+	setKernelArg(h_squared_abs_kernel, 1, h_CL_k.getBuffers()[1], "h[1]");
 
 	// Генерация h
 	for (int k = 0; k < amount_of_h; k++)
 	{
+		const float delta_z = k * std::numbers::pi_v<float>;
 
-		float delta_z = k * std::numbers::pi_v<float>;
-
-		ret = clSetKernelArg(h_init_kernel, 0, sizeof(delta_z), &delta_z);
-		if (ret != CL_SUCCESS)
-			printf("Problems w/ setting KernelArgs for delta_z h_init_kernel\n");
-
+		setKernelArg(h_init_kernel, 0, delta_z, "delta_z");
 
 		size_t global_group_size[] = { extent, extent };
 		/// Кладем в очередь команды для вызова kernel, который создает матрицу h размерами исходной картинки
@@ -423,12 +426,11 @@ int main(void)
 
 		for (int i = 0; i < 2; i++)
 		{
-			ret = clSetKernelArg(fft_shift_row_kernel, 0, sizeof(cl_mem), &h_CL_k.getBuffers()[i]);
-			if (ret != CL_SUCCESS)
-				printf("Problems w/ setting KernelArgs for h[%d] fft_shift_row_kernel\n", i);
-			ret = clSetKernelArg(fft_shift_row_kernel, 1, sizeof(extent), &extent);
-			if (ret != CL_SUCCESS)
-				printf("Problems w/ setting KernelArgs for h[%d] fft_shift_row_kernel\n", i);
+			const int offset_local = 0;
+
+			setKernelArg(fft_shift_row_kernel, 0, h_CL_k.getBuffers()[i], "h[i]");
+			setKernelArg(fft_shift_row_kernel, 1, extent, "extent");
+			setKernelArg(fft_shift_row_kernel, 2, offset_local, "offset_local");
 
 			size_t sizey_t = extent;
 			ret = clEnqueueNDRangeKernel(queue, fft_shift_row_kernel, 1, nullptr, &sizey_t, nullptr, 0, nullptr, nullptr);
@@ -438,13 +440,9 @@ int main(void)
 			if (ret != CL_SUCCESS)
 				printf("Problems w/ clFinish");
 
-			ret = clSetKernelArg(fft_shift_col_kernel, 0, sizeof(cl_mem), &h_CL_k.getBuffers()[i]);
-			if (ret != CL_SUCCESS)
-				printf("Problems w/ setting KernelArgs for h[%d] fft_shift_col_kernel\n", i);
-			ret = clSetKernelArg(fft_shift_col_kernel, 1, sizeof(extent), &extent);
-			if (ret != CL_SUCCESS)
-				printf("Problems w/ setting KernelArgs for h[%d] fft_shift_col_kernel\n", i);
-
+			setKernelArg(fft_shift_col_kernel, 0, h_CL_k.getBuffers()[i], "h[i]");
+			setKernelArg(fft_shift_col_kernel, 1, extent, "extent");
+			setKernelArg(fft_shift_col_kernel, 2, offset_local, "offset_local");
 
 			size_t sizex_t = extent;
 			ret = clEnqueueNDRangeKernel(queue, fft_shift_col_kernel, 1, nullptr, &sizex_t, nullptr, 0, nullptr, nullptr);
@@ -468,10 +466,11 @@ int main(void)
 
 		// Расширяем матрицу h ( теперь она становится h_rash )
 		for (int i = 0; i < 2; i++)
+		{
 			for (int j = 0; j < extent; j++)
 			{
-				err = clEnqueueCopyBuffer(queue, h_CL_k.getBuffers()[i], h_rash_CL[k].getBuffers()[i],
-					j * extent * sizeof(cl_float), j * rash_extent * sizeof(cl_float),
+				err = clEnqueueCopyBuffer(queue, h_CL_k.getBuffers()[i], all_h_rash_CL_buffer.getBuffers()[i],
+					j * extent * sizeof(cl_float), (k * rash_dim_of_picture + j * rash_extent) * sizeof(cl_float),
 					extent * sizeof(cl_float), 0, nullptr, nullptr);
 				if (err != CL_SUCCESS)
 				{
@@ -483,19 +482,37 @@ int main(void)
 					clReleaseContext(ctx);
 					return err;
 				}
-
 			}
+		}
 
 		ret = clFinish(queue);
 		if (ret != CL_SUCCESS)
 			printf("Problems w/ clFinish after copy");
 	}
+	
+	std::vector<cl_float> h_real(rash_dim_of_picture, 0);
+	
+	for (int i = 0; i < amount_of_h; i++)
+	{
+		ret = clEnqueueReadBuffer(
+			queue, all_h_rash_CL_buffer.getBuffers()[0], CL_TRUE, rash_dim_of_picture * i * sizeof(cl_float), rash_dim_of_picture * sizeof(float),
+			h_real.data(), 0, NULL, NULL);
+		
+		const double sum_real = std::accumulate(h_real.begin(), h_real.end(), 0.0);
 
+		for (int k = 0; k < rash_dim_of_picture; k++)
+			h_real[k] = cl_float(h_real[k] / sum_real);
+
+		err = clEnqueueWriteBuffer(
+			queue, all_h_rash_CL_buffer.getBuffers()[0], CL_TRUE, rash_dim_of_picture * i * sizeof(cl_float), rash_dim_of_picture * sizeof(float),
+			h_real.data(), 0, nullptr, nullptr);
+		
+	}
+	
 
 	clReleaseKernel(h_init_kernel);
 	clReleaseKernel(h_squared_abs_kernel);
-	clReleaseKernel(fft_shift_col_kernel);
-	clReleaseKernel(fft_shift_row_kernel);
+
 	fft_orig_size = {};
 	h_CL_k = {};
 
@@ -503,21 +520,16 @@ int main(void)
 
 	clock_t start_h_CL_fft_time = clock();
 	FFT_OpenCL_data fft_rash_size;
-	err = fft_rash_size.Init(rash_extent, rash_extent, ctx, queue, 1, CLFFT_BACKWARD);
+	err = fft_rash_size.Init(rash_extent, rash_extent, ctx, queue, amount_of_h, CLFFT_BACKWARD);
 
-	for (int k = 0; k < amount_of_h; k++)
-	{
-		// Прямое ПФ для расширенной матрицы h
-		if (FFT_2D_OpenCL(&h_rash_CL[k], CLFFT_FORWARD, queue, CL_FALSE, &fft_rash_size) == 0)
-			;
-		else
-			printf("FFT for h_rash[%d] func NOT passed !\n", k);
-	}
-	ret = clFinish(queue);
-	if (ret != CL_SUCCESS)
-		printf("Problems w/ clFinish after 2nd FFT for h_rash");
+	// Прямое ПФ для расширенной матрицы h
+	if (FFT_2D_OpenCL(&all_h_rash_CL_buffer, CLFFT_FORWARD, queue, CL_TRUE, &fft_rash_size) == 0)
+		;
+	else
+		printf("FFT for all_h_rash_CL_buffer func NOT passed !\n");
 
 	clock_t end_h_CL_fft_time = clock();
+
 
 
 	/// РАБОТА С h ЗАКОНЧЕНА
@@ -531,41 +543,138 @@ int main(void)
 	show_status_string("");
 
 
-	/// Умножение картинки и элементов матрицы h_rash
-
 	std::vector<float> result(rash_dim_of_picture, 0);
 	Image image_result(extent, extent);
 	for (int i = 0; i < image_result.getHeight(); i++)
 		image_result.allocateRow(i, image_result.getWidth() * sizeof(image_result.getRowPointers()[0][0]));
 
+	const clock_t pixel_recovery_start_time = clock();
 
-	// 1) единичная матрица
-	std::vector<float> E(rash_dim_of_picture, 0);
-	for (int i = 0; i < rash_extent; i++)
-			E[i * rash_extent + i] =  1.0f;
-			
-	 //2) генерация матрицы из матриц h extent
-	
+	cl_kernel pixel_recovery_kernel = clCreateKernel(program, "pixel_recovery_kernel", &ret);
 
+	// __global const float* images_real, __global const float* images_imag
+	setKernelArg(pixel_recovery_kernel, 0, all_pics_buffer.getBuffers()[0], "all_pics_buffer[0]");
+	setKernelArg(pixel_recovery_kernel, 1, all_pics_buffer.getBuffers()[1], "all_pics_buffer[1]");
 
-	for (int k = 0; k < image_result.getHeight(); k++)
-		for (int l = 0; l < image_result.getWidth(); l++)
+	// __global const float* h_real, __global const float* h_imag
+	setKernelArg(pixel_recovery_kernel, 2, all_h_rash_CL_buffer.getBuffers()[0], "all_h_rash_CL_buffer[0]");
+	setKernelArg(pixel_recovery_kernel, 3, all_h_rash_CL_buffer.getBuffers()[1], "all_h_rash_CL_buffer[1]");
+
+	//__global float2 *tmp_multiply_matrix
+	cl_mem tmp_multiply_matrix =
+		clCreateBuffer(ctx, CL_MEM_READ_WRITE, amount_of_pics * amount_of_pics * rash_dim_of_picture * sizeof(cl_float2), nullptr, &err);
+	setKernelArg(pixel_recovery_kernel, 4, tmp_multiply_matrix, "tmp_multiply_matrix");
+
+	//__global float2 *O
+	cl_mem O = clCreateBuffer(ctx, CL_MEM_READ_WRITE, amount_of_pics * rash_dim_of_picture * sizeof(cl_float2), nullptr, &err);
+	setKernelArg(pixel_recovery_kernel, 5, O, "O");
+
+	//__global float2 *prepared_vec_of_input_pixels
+	cl_mem prepared_vec_of_input_pixels = clCreateBuffer(ctx, CL_MEM_READ_WRITE, amount_of_pics * rash_dim_of_picture * sizeof(cl_float2), nullptr, &err);
+	setKernelArg(pixel_recovery_kernel, 6, prepared_vec_of_input_pixels, "prepared_vec_of_input_pixels");
+
+	//__global float2* tmp_multiply_vec
+	cl_mem tmp_multiply_vec = clCreateBuffer(ctx, CL_MEM_READ_WRITE, amount_of_pics * rash_dim_of_picture * sizeof(cl_float2), nullptr, &err);
+	setKernelArg(pixel_recovery_kernel, 7, tmp_multiply_vec, "tmp_multiply_vec");
+
+	//__global float* result_real, __global float* result_imag)
+	Cl_Buffer_pair all_pics_result_CL;
+	all_pics_result_CL.Init(ctx, queue, CL_MEM_WRITE_ONLY, amount_of_pics * rash_dim_of_picture);
+	setKernelArg(pixel_recovery_kernel, 8, all_pics_result_CL.getBuffers()[0], "all_pics_result_CL[0]");
+	setKernelArg(pixel_recovery_kernel, 9, all_pics_result_CL.getBuffers()[1], "all_pics_result_CL[1]");
+
+	size_t global_group_size[] = { rash_extent, rash_extent };
+
+	ret = clEnqueueNDRangeKernel(queue, pixel_recovery_kernel, std::size(global_group_size), nullptr, global_group_size, nullptr, 0, nullptr, nullptr);
+	if (ret != CL_SUCCESS)
+		printf("Problems w/ clEnqueueNDRangeKernel pixel_recovery_kernel");
+	ret = clFinish(queue);
+	if (ret != CL_SUCCESS)
+		printf("Problems w/ clFinish");
+
+	clReleaseKernel(pixel_recovery_kernel);
+
+	for (cl_mem tmp_mem : {tmp_multiply_matrix, O, prepared_vec_of_input_pixels, tmp_multiply_vec})
+		clReleaseMemObject(tmp_mem);
+
+	if (FFT_2D_OpenCL(&all_pics_result_CL, CLFFT_BACKWARD, queue, CL_TRUE, &fft_rash_size) == 0)
+		;
+	else
+		printf("IFFT for all_pics_result_CL func NOT passed !\n");
+
+	for (int i = 0; i < amount_of_pics; i++)
+	{
+		const auto offset_local = int(rash_dim_of_picture) * i;
+
+		setKernelArg(fft_shift_row_kernel, 0, all_pics_result_CL.getBuffers()[0], "all_pics_result_CL[0]");
+		setKernelArg(fft_shift_row_kernel, 1, rash_extent, "rash_extent");
+		setKernelArg(fft_shift_row_kernel, 2, offset_local, "offset_local");
+
+		size_t sizey_t = rash_extent;
+		ret = clEnqueueNDRangeKernel(queue, fft_shift_row_kernel, 1, nullptr, &sizey_t, nullptr, 0, nullptr, nullptr);
+		if (ret != CL_SUCCESS)
+			printf("Problems w/ clEnqueueNDRangeKernel fft_shift_row_kernel");
+		ret = clFinish(queue);
+		if (ret != CL_SUCCESS)
+			printf("Problems w/ clFinish");
+
+		setKernelArg(fft_shift_col_kernel, 0, all_pics_result_CL.getBuffers()[0], "all_pics_result_CL[0]");
+		setKernelArg(fft_shift_col_kernel, 1, rash_extent, "rash_extent");
+		setKernelArg(fft_shift_col_kernel, 2, offset_local, "offset_local");
+
+		size_t sizex_t = rash_extent;
+		ret = clEnqueueNDRangeKernel(queue, fft_shift_col_kernel, 1, nullptr, &sizex_t, nullptr, 0, nullptr, nullptr);
+		if (ret != CL_SUCCESS)
+			printf("Problems w/ clEnqueueNDRangeKernel fft_shift_col_kernel");
+		ret = clFinish(queue);
+		if (ret != CL_SUCCESS)
+			printf("Problems w/ clFinish");
+	}
+
+	fft_rash_size = {};
+
+	const clock_t pixel_recovery_end_time = clock();
+
+	show_status_string("");
+	show_status_string("Time for pixel recovery (all pics): %f", double(pixel_recovery_end_time - pixel_recovery_start_time) / double(CLOCKS_PER_SEC));
+	show_status_string("");
+
+	for (int i = 0; i < amount_of_pics; i++)
+	{
+		ret =
+			clEnqueueReadBuffer(
+				queue, all_pics_result_CL.getBuffers()[0], CL_TRUE, rash_dim_of_picture * i * sizeof(cl_float), rash_dim_of_picture * sizeof(cl_float),
+				result.data(), 0, NULL, NULL);
+
+		
+		auto minmax_iter_pair = std::minmax_element(result.begin(), result.end());
+
+		// Запись картинки в файл
+		for (int k = 0; k < image_result.getHeight(); k++)
 		{
-			float res = result[(k + image_result.getHeight() / 2) * fft_rash_size.getSizeX() + (l + image_result.getWidth() / 2)];
-			image_result.getRowPointers()[k][l] = (char)res;
+			for (int l = 0; l < image_result.getWidth(); l++)
+			{
+				double res = result[(k + image_result.getHeight() / 2) * rash_extent + (l + image_result.getWidth() / 2)];
+				res -= (result[0] - *minmax_iter_pair.first);
+				res = (res - *minmax_iter_pair.first) / double(*minmax_iter_pair.second - *minmax_iter_pair.first) * 255.0;
+				image_result.getRowPointers()[k][l] = (unsigned char)std::clamp(res, 0.0, 255.0);
+			}
 		}
 
-	char filename_png[64] = { '\0' };
-	//sprintf(filename_png, "result/image%02d.png", m + 1);
-	//show_status_string("Writing data to file");
+		char filename_png[64] = { '\0' };
+		sprintf(filename_png, "result/image%02d.png", i + 1);
+		show_status_string("Writing data to file");
 
-	image_result.writeToPngFile(filename_png);
+		image_result.writeToPngFile(filename_png);
+	}
 
 
 	printf("### Cleaning...\n");
 
 	// fputc('\n', list_of_runs_log_file);
 	fclose(last_run_log_file);
+	clReleaseKernel(fft_shift_col_kernel);
+	clReleaseKernel(fft_shift_row_kernel);
 	clReleaseProgram(program);
 	clfftTeardown(); // Release clFFT library
 	clReleaseCommandQueue(queue); // Release OpenCL working objects
@@ -579,9 +688,9 @@ int main(void)
 	err = clGetDeviceInfo(device, CL_DEVICE_NAME, sizeof(name), name, nullptr);
 
 	if (ftell(list_of_runs_log_file) == 0)
-		fprintf(list_of_runs_log_file, "I%-20s I%-19s I%-22s I%-15s I%-15s I%-15s\n\n", "Date", "time(multiply+add)", "full time of program", "Size", "Amount of pics", "Device");
-
-	//fprintf(list_of_runs_log_file, "I%-20s I%-19f I%-22f I%-15d I%-15d I%-15s\n", buff, tmp_time_of_calc, (float)(time_end_program - time_start_program) / CLOCKS_PER_SEC, extent, amount_of_pics, name);
+		fprintf(list_of_runs_log_file, "|%-20s |%-19s |%-22s |%-15s |%-15s |%-15s\n", "Date", "time(recovery)", "full time of program", "Size", "Amount of pics", "Device");
+ 
+	fprintf(list_of_runs_log_file, "|%-20s |%-19f |%-22f |%-15d |%-15d |%-15s\n\n", buff, double(pixel_recovery_end_time - pixel_recovery_start_time) / double(CLOCKS_PER_SEC), (float)(time_end_program - time_start_program) / CLOCKS_PER_SEC, extent, amount_of_pics, name);
 
 	fclose(list_of_runs_log_file);
 	return 0;

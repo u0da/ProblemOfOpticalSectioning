@@ -1,5 +1,6 @@
 #include "Cl_Buffer_pair.h"
 #include <cstdio>
+#include <cstring>
 
 cl_int  Cl_Buffer_pair::Init(cl_context ctx, cl_command_queue queue, cl_bitfield mode, size_t N)
 {
@@ -30,4 +31,25 @@ cl_int  Cl_Buffer_pair::Init(cl_context ctx, cl_command_queue queue, cl_bitfield
 		return err;
 	}
 	return  err;
+}
+
+void Cl_Buffer_pair::destroy()
+{
+	// Release OpenCL memory objects
+	clReleaseMemObject(m_buffers[0]);
+	clReleaseMemObject(m_buffers[1]);
+	std::memset(this, 0, sizeof(*this));
+}
+
+Cl_Buffer_pair& Cl_Buffer_pair::operator = (Cl_Buffer_pair&& rhv) noexcept
+{
+	destroy();
+	
+	this->m_buffers[0] = rhv.m_buffers[0];
+	rhv.m_buffers[0] = 0;
+
+	this->m_buffers[1] = rhv.m_buffers[1];
+	rhv.m_buffers[1] = 0;
+
+	return *this;
 }

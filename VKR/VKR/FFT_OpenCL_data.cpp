@@ -43,6 +43,9 @@ cl_int FFT_OpenCL_data::Init(int sizex, int sizey, cl_context ctx, cl_command_qu
 	err = clfftSetPlanScale(m_planHandle, direction_normalize, 1.0f / sqrtf(N));
 	if (err != CL_SUCCESS)
 		return err;
+	err = clfftSetPlanScale(m_planHandle, direction_normalize == CLFFT_FORWARD ? CLFFT_BACKWARD : CLFFT_FORWARD, 1.0f);
+	if (err != CL_SUCCESS)
+		return err;
 
 	// Bake the plan
 	err = clfftBakePlan(m_planHandle, 1, &queue, nullptr, nullptr);

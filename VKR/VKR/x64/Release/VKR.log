@@ -1,0 +1,28 @@
+﻿  main_OpenCL.cpp
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(32,2): warning C4996: 'vsprintf': This function or variable may be unsafe. Consider using vsprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(86,3): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(146,16): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(224,20): warning C4018: '<': signed/unsigned mismatch
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(234,13): warning C4018: '>=': signed/unsigned mismatch
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(406,34): warning C4838: conversion from 'int' to 'size_t' requires a narrowing conversion
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(406,42): warning C4838: conversion from 'int' to 'size_t' requires a narrowing conversion
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(586,33): warning C4838: conversion from 'int' to 'size_t' requires a narrowing conversion
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(586,46): warning C4838: conversion from 'int' to 'size_t' requires a narrowing conversion
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(588,147): warning C4267: 'argument': conversion from 'size_t' to 'cl_uint', possible loss of data
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(237,3): warning C4996: 'scanf': This function or variable may be unsafe. Consider using scanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(250,2): warning C4996: 'sscanf': This function or variable may be unsafe. Consider using sscanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(260,2): warning C4996: 'scanf': This function or variable may be unsafe. Consider using scanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(268,3): warning C4996: 'scanf': This function or variable may be unsafe. Consider using scanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(274,2): warning C4996: 'scanf': This function or variable may be unsafe. Consider using scanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(279,2): warning C4996: 'scanf': This function or variable may be unsafe. Consider using scanf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(286,45): warning C4996: 'localtime': This function or variable may be unsafe. Consider using localtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(289,2): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(290,22): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(665,3): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(686,43): warning C4996: 'localtime': This function or variable may be unsafe. Consider using localtime_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\u0da-win\Documents\VKR\VKR\main_OpenCL.cpp(687,26): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  Generating code
+  Previous IPDB and IOBJ mismatch, fall back to full compilation.
+  All 409 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  VKR.vcxproj -> C:\Users\u0da-win\Documents\VKR\VKR\Exe\VKR.exe
